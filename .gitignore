@@ -1,0 +1,42 @@
+# --- Entornos Virtuales (LO MÁS IMPORTANTE) ---
+venv/
+env/
+.venv/
+ENV/
+
+# --- Python y Compilados ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Variables de Entorno y Secretos (SEGURIDAD) ---
+# Nunca subas tus API Keys de OpenAI/Anthropic/Google
+.env
+.env.local
+
+# --- IDEs y Editores ---
+.vscode/
+.idea/
+*.swp
+
+# --- Datos y Modelos (Opcional pero recomendado para AI) ---
+# Evita subir datasets pesados o modelos binarios grandes a GitHub
+*.csv
+*.jsonl
+*.pt
+*.h5
+*.gguf
+models/
+data/
+
+# --- Jupyter Notebooks (Checkpoints) ---
+.ipynb_checkpoints
+
+chroma_db/
+chat_history/
+*.log
+EOF
+
+# Uploads
+uploads/

@@ -1,0 +1,13 @@
+streamlit
+langchain
+langchain-core
+langchain-community
+langchain-chroma
+chromadb
+sentence-transformers
+pypdf
+openpyxl
+python-docx
+pandas
+fake-useragent
+watchdog

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  rag-chatbot:
+    build: .
+    container_name: network-rag-chatbot
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./uploads:/app/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Ensure Ollama is reachable. 
+    # If Ollama is running on host, use host.docker.internal (Mac/Windows) or network mode host (Linux)
+    # For Linux specifically:
+    extra_hosts:
+      - "host.docker.internal:host-gateway" 
+
+    # Alternatively, if you want full host network access (Linux only)
+    # network_mode: host
