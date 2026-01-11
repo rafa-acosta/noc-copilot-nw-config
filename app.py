@@ -105,33 +105,115 @@ with st.sidebar:
         st.toast(f"Switched to {selected_model}")
 
     st.markdown("---")
+    st.markdown("---")
     st.markdown("### 📂 Ingestion")
-    uploaded_file = st.file_uploader("Upload Config (TXT/PDF)", type=['txt', 'pdf', 'cfg', 'log'])
     
-    if uploaded_file:
-        file_bytes = uploaded_file.getvalue()
+    # Golden Config Uploader
+    st.markdown("#### 1. Golden Config (Reference)")
+    golden_file = st.file_uploader("Upload Golden Config", type=['txt', 'pdf', 'cfg', 'log'], key="golden_uploader")
+    
+    if golden_file:
+        file_bytes = golden_file.getvalue()
         file_hash = compute_file_hash(file_bytes)
         
         # Simple local save mechanics
         upload_dir = "./uploads"
         os.makedirs(upload_dir, exist_ok=True)
-        safe_name = clean_filename(uploaded_file.name)
+        safe_name = clean_filename(golden_file.name)
         save_path = os.path.join(upload_dir, safe_name)
         
-        # Check if already processed (simple session check)
-        if f"processed_{file_hash}" not in st.session_state:
+        # Check if already processed
+        if f"processed_golden_{file_hash}" not in st.session_state:
             with open(save_path, "wb") as f:
                 f.write(file_bytes)
             
-            with st.spinner("Parsing and Indexing..."):
-                success = st.session_state.chatbot.process_file(save_path)
+            with st.spinner("Indexing Golden Config..."):
+                success = st.session_state.chatbot.process_file(save_path, extra_metadata={"config_role": "golden"})
                 if success:
-                    st.session_state[f"processed_{file_hash}"] = True
-                    st.success("File indexed successfully!")
+                    st.session_state[f"processed_golden_{file_hash}"] = True
+                    st.session_state["golden_name"] = golden_file.name
+                    st.session_state["golden_filename_clean"] = safe_name # Store sanitized name
+                    st.session_state["golden_hash"] = file_hash # Store Hash
+                    st.success("✅ Golden Config Indexed!")
                 else:
                     st.error("Failed to process file.")
         else:
-            st.info("File already indexed.")
+            st.info("✅ Golden Config Ready")
+            st.session_state["golden_name"] = golden_file.name
+            st.session_state["golden_filename_clean"] = safe_name
+            st.session_state["golden_hash"] = file_hash
+
+    # Candidate Config Uploader
+    st.markdown("#### 2. Candidate Config (Target)")
+    candidate_file = st.file_uploader("Upload Candidate Config", type=['txt', 'pdf', 'cfg', 'log'], key="candidate_uploader")
+
+    if candidate_file:
+        file_bytes = candidate_file.getvalue()
+        file_hash = compute_file_hash(file_bytes)
+        
+        # Simple local save mechanics
+        upload_dir = "./uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+        safe_name = clean_filename(candidate_file.name)
+        save_path = os.path.join(upload_dir, safe_name)
+        
+        # Check if already processed
+        if f"processed_candidate_{file_hash}" not in st.session_state:
+            with open(save_path, "wb") as f:
+                f.write(file_bytes)
+            
+            with st.spinner("Indexing Candidate Config..."):
+                success = st.session_state.chatbot.process_file(save_path, extra_metadata={"config_role": "candidate"})
+                if success:
+                    st.session_state[f"processed_candidate_{file_hash}"] = True
+                    st.session_state["candidate_name"] = candidate_file.name
+                    st.session_state["candidate_filename_clean"] = safe_name # Store sanitized name
+                    st.session_state["candidate_hash"] = file_hash # Store Hash
+                    st.success("✅ Candidate Config Indexed!")
+                else:
+                    st.error("Failed to process file.")
+        else:
+            st.info("✅ Candidate Config Ready")
+            st.session_state["candidate_name"] = candidate_file.name
+            st.session_state["candidate_filename_clean"] = safe_name
+            st.session_state["candidate_hash"] = file_hash
+
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("⚖️ Deep Compare", disabled=not (golden_file and candidate_file), use_container_width=True):
+            if "golden_name" in st.session_state and "candidate_name" in st.session_state:
+                prompt = (
+                    f"Compare the candidate configuration '{st.session_state['candidate_name']}' "
+                    f"against the golden configuration '{st.session_state['golden_name']}'. "
+                    "Provide a detailed analysis of differences in: "
+                    "1. VLANs "
+                    "2. Interfaces "
+                    "3. Routing Protocols "
+                    "4. Security ACLs. "
+                    "Highlight missing or extra configurations in the candidate file."
+                )
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                st.rerun()
+
+    with col2:
+        if st.button("⚡ Quick Diff", disabled=not (golden_file and candidate_file), use_container_width=True):
+             if "golden_name" in st.session_state and "candidate_name" in st.session_state:
+                prompt = (
+                    f"Compare '{st.session_state['candidate_name']}' against '{st.session_state['golden_name']}'. "
+                    "Produce a **Markdown Table** only. No summary text.\n"
+                    "Columns: | Feature/Line | Golden Config | Candidate Status |\n"
+                    "Rules for 'Candidate Status':\n"
+                    "- ✅ MATCH\n"
+                    "- ❌ MISSING\n"
+                    "- ➕ EXTRA\n"
+                    "- ⚠️ DIFF: <Show value>\n"
+                    "Focus on VLANs, Interfaces, and Routes."
+                )
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                st.rerun()
 
     st.markdown("---")
     if st.button("Clear Chat"):
@@ -157,15 +239,45 @@ for msg in st.session_state.messages:
 
 # Chat Input
 if prompt := st.chat_input("Ex: What VLANs are configured on the core switch?"):
-    # Add User Message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    st.rerun()
 
-    # Generate Response
+# Logic to Handle Response Generation
+# Checks if the last message is from the user, implying we need to reply.
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response_data = st.session_state.chatbot.ask(prompt)
+            # Get the last user message text
+            user_input = st.session_state.messages[-1]["content"]
+            
+            # Detect if it's a comparison query (simple heuristic based on our button prompts)
+            is_comparison = "Compare" in user_input and "golden" in user_input.lower()
+            
+            if is_comparison:
+                # Deterministic Check: Are the files identical?
+                g_hash = st.session_state.get("golden_hash")
+                c_hash = st.session_state.get("candidate_hash")
+                
+                if g_hash and c_hash and g_hash == c_hash:
+                    # Short-circuit
+                    response_data = {
+                        "result": "### ✅ Identical Configurations\n\nThe Golden and Candidate configuration files are **digitally identical** (SHA256 Match). No differences found.",
+                        "source_documents": [],
+                        "model": "Deterministic Check",
+                        "latency": 0.00
+                    }
+                else:
+                    # Retrieve the clean filenames from session state (if available) to ensure we compare the RIGHT files
+                    g_meta = st.session_state.get("golden_filename_clean")
+                    c_meta = st.session_state.get("candidate_filename_clean")
+                    
+                    response_data = st.session_state.chatbot.compare_configs(
+                        user_input, 
+                        golden_filename=g_meta, 
+                        candidate_filename=c_meta
+                    )
+            else:
+                response_data = st.session_state.chatbot.ask(user_input)
             
             answer = response_data["result"]
             sources = response_data["source_documents"]
@@ -186,3 +298,6 @@ if prompt := st.chat_input("Ex: What VLANs are configured on the core switch?"):
                 "content": answer,
                 "citations": sources
             })
+            
+            # Rerun to update state properly
+            st.rerun()

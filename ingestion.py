@@ -177,7 +177,7 @@ class IngestionEngine:
             collection_name="network_configs"
         )
 
-    def process_file(self, file_path: str):
+    def process_file(self, file_path: str, extra_metadata: Dict[str, Any] = None):
         """Reads, parses, and indexes a file."""
         logger.info(f"Processing file: {file_path}")
         
@@ -208,6 +208,10 @@ class IngestionEngine:
                 "has_secret": block.has_secret,
                 "parent_line": block.parent_line
             }
+            
+            # Merge extra_metadata if provided
+            if extra_metadata:
+                meta.update(extra_metadata)
             
             # Create Document
             doc = Document(

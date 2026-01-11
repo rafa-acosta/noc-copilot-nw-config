@@ -83,9 +83,9 @@ class RAGChatbot:
         # Rebuild chain with new LLM
         self.chain = self._build_chain()
 
-    def process_file(self, file_path: str) -> bool:
+    def process_file(self, file_path: str, extra_metadata: Dict[str, Any] = None) -> bool:
         """Wrapper to pass file ingestion to the engine."""
-        return self.ingestion.process_file(file_path)
+        return self.ingestion.process_file(file_path, extra_metadata)
 
     def ask(self, query: str) -> Dict[str, Any]:
         """
@@ -116,6 +116,118 @@ class RAGChatbot:
             logger.error(f"Chat Error: {e}")
             return {
                 "result": f"Error generating response: {str(e)}",
+                "source_documents": [],
+                "model": self.model_name,
+                "latency": 0.0
+            }
+
+    def compare_configs(self, query: str, golden_filename: str = None, candidate_filename: str = None) -> Dict[str, Any]:
+        """
+        Specialized method for comparing two configurations.
+        Manually retrieves context and segregates it by 'config_role' AND filename
+        to prevent hallucination/pollution from previous files.
+        """
+        start_time = time.time()
+        try:
+            logger.info(f"Comparing: {query} (Golden: {golden_filename}, Candidate: {candidate_filename})")
+            
+            # 1. Start with Role Filters (Using $and syntax for multiple conditions if needed)
+            
+            # Construct Golden Filter
+            if golden_filename:
+                filter_golden = {
+                    "$and": [
+                        {"config_role": "golden"},
+                        {"source": golden_filename}
+                    ]
+                }
+            else:
+                filter_golden = {"config_role": "golden"}
+
+            # Construct Candidate Filter
+            if candidate_filename:
+                filter_candidate = {
+                    "$and": [
+                        {"config_role": "candidate"},
+                        {"source": candidate_filename}
+                    ]
+                }
+            else:
+                filter_candidate = {"config_role": "candidate"}
+                
+            # 3. Dual Retrieval Strategy with Specific Filters
+            
+            # Retrieve Golden Context
+            docs_golden = self.ingestion.vector_store.similarity_search(
+                query, 
+                k=10, 
+                filter=filter_golden
+            )
+            
+            # Retrieve Candidate Context
+            docs_candidate = self.ingestion.vector_store.similarity_search(
+                query, 
+                k=10, 
+                filter=filter_candidate
+            )
+            
+            # Combine all docs for citation purposes
+            docs = docs_golden + docs_candidate
+            
+            # 2. Segregate Context (Already separated by query, but format for prompt)
+            golden_context = []
+            for doc in docs_golden:
+                content = f"[Line {doc.metadata.get('line_start')}] {doc.page_content}"
+                golden_context.append(content)
+
+            candidate_context = []
+            for doc in docs_candidate:
+                content = f"[Line {doc.metadata.get('line_start')}] {doc.page_content}"
+                candidate_context.append(content)
+            
+            # 3. Build Structured Prompt
+            golden_text = "\n".join(golden_context) if golden_context else "No Golden Config context found."
+            candidate_text = "\n".join(candidate_context) if candidate_context else "No Candidate Config context found."
+            
+            prompt = f"""
+You are a Senior Network Engineer assistant specializing in configuration auditing.
+You are comparing a **Golden Configuration** (Reference) against a **Candidate Configuration** (Target).
+
+CONTEXT FROM GOLDEN CONFIG:
+{golden_text}
+
+CONTEXT FROM CANDIDATE CONFIG:
+{candidate_text}
+
+USER INSTRUCTION:
+{query}
+
+STRICT RULES:
+1. Compare ONLY the provided context.
+2. If the Golden and Candidate contexts for a specific feature are IDENTICAL, you MUST report it as a MATCH.
+3. Only report "MISSING" or "EXTRA" if there is an actual difference in the provided text.
+4. Be precise.
+            """
+            
+            # 4. Invoke LLM directly (bypass RetrievalQA chain to use our custom prompt)
+            # using the same LLM instance
+            response_msg = self.llm.invoke(prompt)
+            result_text = response_msg.content
+            
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            return {
+                "result": result_text,
+                "source_documents": docs,
+                "model": self.model_name,
+                "latency": round(latency, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"Comparison Error: {e}")
+            return {
+                "result": f"Error generating comparison: {str(e)}",
                 "source_documents": [],
                 "model": self.model_name,
                 "latency": 0.0
