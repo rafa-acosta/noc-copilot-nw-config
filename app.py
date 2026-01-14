@@ -3,13 +3,14 @@ import os
 import shutil
 from utils import logger, compute_file_hash, clean_filename
 from chat_logic import RAGChatbot
+from ingestion import NetworkConfigParser
 
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="NetConfig GenAI",
+    page_title="NOC Copilot Config Compare",
     page_icon="📡",
     layout="wide"
 )
@@ -96,7 +97,7 @@ with st.sidebar:
     st.markdown("### Model Selection")
     selected_model = st.selectbox(
         "Choose LLM Backend",
-        ["llama3.2:3b", "phi3.5", "mistral", "custom"],
+        ["llama3.2:3b", "phi3.5", "dr-ry/Foundation-Sec-8B-Instruct-Chat-Q8_0.gguf:latest", "llama3.1:8b","qwen2.5-coder:7b-instruct"],
         index=0
     )
     
@@ -214,6 +215,58 @@ with st.sidebar:
                 )
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 st.rerun()
+
+    st.markdown("---")
+    
+    # -------------------------------------------------------------------------
+    # RAG Inspector (Debug Tool)
+    # -------------------------------------------------------------------------
+    with st.expander("🔍 RAG Inspector"):
+        st.caption("Inspect how files are chunked for RAG.")
+        
+        inspect_target = st.radio(
+            "Select File to Inspect",
+            ["Golden Config", "Candidate Config"],
+            horizontal=True
+        )
+        
+        if st.button("View Chunks"):
+            target_file_name = None
+            if inspect_target == "Golden Config":
+                target_file_name = st.session_state.get("golden_filename_clean")
+            else:
+                target_file_name = st.session_state.get("candidate_filename_clean")
+            
+            if target_file_name:
+                file_path = os.path.join("./uploads", target_file_name)
+                if os.path.exists(file_path):
+                    with st.spinner(f"Parsing {target_file_name}..."):
+                        try:
+                            # Re-read and re-parse on demand for inspection
+                            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                                content = f.read()
+                            
+                            parser = NetworkConfigParser(content, target_file_name)
+                            blocks = parser.parse()
+                            
+                            st.markdown(f"**Found {len(blocks)} chunks in `{target_file_name}`**")
+                            
+                            # Display chunks
+                            for i, block in enumerate(blocks):
+                                with st.expander(f"Chunk {i+1}: {block.header_type} (Lines {block.line_start}-{block.line_end})"):
+                                    st.code(block.full_text, language="text")
+                                    st.markdown(f"**Metadata:**")
+                                    st.json({
+                                        "parent_line": block.parent_line,
+                                        "has_secret": block.has_secret,
+                                        "size_chars": len(block.full_text)
+                                    })
+                        except Exception as e:
+                            st.error(f"Error parsing file: {e}")
+                else:
+                    st.error(f"File not found: {file_path}")
+            else:
+                st.warning("No file uploaded for this role yet.")
 
     st.markdown("---")
     if st.button("Clear Chat"):
