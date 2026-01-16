@@ -1,0 +1,70 @@
+# Walkthrough: Network RAG Chatbot
+
+## 🚀 Getting Started
+
+### Prerequisites
+1.  **Ollama** installed and running (`ollama serve`).
+2.  **Pull supported models**:
+    ```bash
+    ollama pull llama3.2:3b
+    # or
+    ollama pull phi3.5
+    ```
+3.  **Docker** & **Docker Compose** installed (optional, can run locally).
+
+### Option A: Run with Docker (Recommended)
+1.  Build and start the container:
+    ```bash
+    docker-compose up --build
+    ```
+2.  Access the UI at: `http://localhost:8501`
+
+### Option B: Run Locally
+1.  Create a virtual environment:
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+2.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  Run Streamlit:
+    ```bash
+    streamlit run app.py
+    ```
+
+## ✅ Verification Steps
+
+### 1. File Ingestion
+- **Action**: Upload a Cisco IOS or Aruba configuration file (TXT/PDF).
+- **Verify**:
+    - "File indexed successfully!" toast appears.
+    - Check terminal logs for "Generated X chunks".
+
+### 2. Chat & Retrieval
+- **Action**: Ask "What are the interface IP addresses?".
+- **Verify**:
+    - Response lists IPs found in the config.
+    - **Sources** expander shows exact lines from the file.
+    - Response is grounded (no unrelated info).
+
+### 3. Model Switching
+- **Action**: Select a different model (e.g., `phi3.5`) in the sidebar.
+- **Verify**: Toast notification confirming switch. Next query uses new model.
+
+## ⚠️ Notes
+- **Secrets Redaction**: Passwords/Keys in the config are automatically replaced with `[REDACTED]`.
+- **Persistence**: Using `chroma_db` folder. If you restart the app, specific files do NOT need to be re-indexed.
+
+## 🛠️ Troubleshooting
+
+### Docker Permission Denied (Linux)
+If you see `PermissionError: [Errno 13] Permission denied`, you need to run with sudo:
+```bash
+sudo docker-compose up --build
+```
+Or allow your user to run docker without sudo (requires restart):
+```bash
+sudo usermod -aG docker $USER
+```

@@ -190,10 +190,11 @@ with st.sidebar:
                     f"Compare the candidate configuration '{st.session_state['candidate_name']}' "
                     f"against the golden configuration '{st.session_state['golden_name']}'. "
                     "Provide a detailed analysis of differences in: "
-                    "1. VLANs "
                     "2. Interfaces "
                     "3. Routing Protocols "
-                    "4. Security ACLs. "
+                    "4. Security ACLs "
+                    "5. QoS & Management. "
+                    "Highlight missing or extra configurations in the candidate file."
                     "Highlight missing or extra configurations in the candidate file."
                 )
                 st.session_state.messages.append({"role": "user", "content": prompt})
@@ -211,7 +212,7 @@ with st.sidebar:
                     "- ❌ MISSING\n"
                     "- ➕ EXTRA\n"
                     "- ⚠️ DIFF: <Show value>\n"
-                    "Focus on VLANs, Interfaces, and Routes."
+                    "Focus on VLANs, Interfaces, Routes, QoS, ACLs, and Management."
                 )
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 st.rerun()
@@ -320,6 +321,14 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                         "latency": 0.00
                     }
                 else:
+                    # Determine comparison mode based on prompt keywords
+                    # Deep Compare asks for "detailed analysis"
+                    # Quick Diff asks for "Markdown Table"
+                    if "detailed analysis" in user_input.lower() or "provide a" in user_input.lower():
+                        comparison_mode = "deep"
+                    else:
+                        comparison_mode = "quick"
+                    
                     # Retrieve the clean filenames from session state (if available) to ensure we compare the RIGHT files
                     g_meta = st.session_state.get("golden_filename_clean")
                     c_meta = st.session_state.get("candidate_filename_clean")
@@ -327,7 +336,8 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     response_data = st.session_state.chatbot.compare_configs(
                         user_input, 
                         golden_filename=g_meta, 
-                        candidate_filename=c_meta
+                        candidate_filename=c_meta,
+                        mode=comparison_mode
                     )
             else:
                 response_data = st.session_state.chatbot.ask(user_input)
